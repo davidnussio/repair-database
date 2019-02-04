@@ -4,7 +4,9 @@
   "description": "A minimal Electron application",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "package": "electron-builder build --publish never",
+    "package-win": "electron-builder build --win --x64"
   },
   "repository": "https://github.com/electron/electron-quick-start",
   "keywords": [
@@ -17,6 +19,11 @@
   "author": "GitHub",
   "license": "CC0-1.0",
   "devDependencies": {
-    "electron": "^4.0.3"
+    "electron": "^4.0.3",
+    "electron-builder": "^20.38.5"
+  },
+  "dependencies": {
+    "nedb": "^1.8.0",
+    "shelljs": "^0.8.3"
   }
 }
