@@ -1,48 +1,80 @@
-// This file is required by the index.html file and will
-// be executed in the renderer process for that window.
-// All of the Node.js APIs are available in this process.
 const { remote } = require("electron");
 const path = require("path");
 const shell = require("shelljs");
 const Datastore = require("nedb");
 
-const root = document.getElementById("root");
+(async () => {
+  const root = document.getElementById("root");
 
-const baseDir = path.join(remote.app.getPath("desktop"), "biblioteca");
-const biblioteca = new Datastore({
-  filename: path.join(baseDir, "db", "biblioteca.nedb"),
-  autoload: true
-});
-const prestiti = new Datastore({
-  filename: path.join(baseDir, "db", "prestiti.nedb"),
-  autoload: true
-});
-root.write("ciao");
+  const log = message => (root.innerHTML += message);
 
-prestiti.find({ ended: null }, (err, docs) => {
-  docs.forEach(p =>
-    biblioteca.findOne({ _id: p.book_id }, (err, book) => {
-      if (book.in_house) {
-        console.log(p._id, book._id, book.in_house);
-        biblioteca.update(
-          { _id: book._id },
-          { $set: { in_house: false } },
-          {},
-          () => {
-            biblioteca.persistence.compactDatafile();
-          }
-        );
-      }
-    })
+  const baseDir = path.join(remote.app.getPath("desktop"), "biblioteca");
+
+  log("<h4>Starting repair tool...</h4>");
+  log("<hr />");
+
+  const backupPath = path.join(
+    remote.app.getPath("desktop"),
+    "backup-" + new Date().toISOString().split(".")[0]
   );
-});
+  log(`Starting dbs backup... (${backupPath})`);
+  shell.mkdir("-p", backupPath);
+  shell.cp("-R", path.join(baseDir, "db"), backupPath);
+  log(" → [ FINITO ]");
+  log("<hr />");
 
-biblioteca.persistence.compactDatafile();
+  const biblioteca = new Datastore({
+    filename: path.join(baseDir, "db", "biblioteca.nedb"),
+    autoload: true
+  });
 
-const destinationPath = path.join(
-  remote.app.getPath("desktop"),
-  "info-" + new Date().toISOString().split(".")[0]
-);
+  const prestiti = new Datastore({
+    filename: path.join(baseDir, "db", "prestiti.nedb"),
+    autoload: true
+  });
 
-shell.mkdir("-p", destinationPath);
-shell.cp("-R", path.join(baseDir, ".logs"), destinationPath);
+  const docs = await new Promise((resolve, reject) => {
+    prestiti.find({ ended: null }, (err, docs) =>
+      err ? reject(err) : resolve(docs)
+    );
+  });
+  const problems = (await Promise.all(
+    docs.map(
+      p =>
+        new Promise((resolve, reject) => {
+          biblioteca.findOne({ _id: p.book_id }, (err, book) => {
+            if (book.in_house) {
+              log(
+                `- È stato trovato un problema... (id libro: ${
+                  book._id
+                })<br /><br />`
+              );
+              biblioteca.update(
+                { _id: book._id },
+                { $set: { in_house: false } },
+                {},
+                () => {
+                  biblioteca.persistence.compactDatafile();
+                  resolve(book._id);
+                }
+              );
+            } else {
+              resolve();
+            }
+          });
+        })
+    )
+  )).filter(id => id);
+
+  console.log(problems);
+
+  log("<hr />");
+
+  log(`Copia file logs.... (${backupPath})`);
+  shell.mkdir("-p", backupPath);
+  shell.cp("-R", path.join(baseDir, ".logs"), backupPath);
+  log(" → [ FINITO ]");
+
+  log("<hr />");
+  log("Chiudere questa applicazione e riaprire il programma della biblioteca");
+})();
